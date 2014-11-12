@@ -1,0 +1,3 @@
+#!/bin/bash
+gpsbabel -i kml -o gpx "$1" "$2"
+gpx2garmin "$2" "$2"
