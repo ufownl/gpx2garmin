@@ -1,6 +1,6 @@
 CXX = g++
 LD = g++
-CXXFLAGS = -g -Wall -I../contrib/include
+CXXFLAGS = -g -Wall -I../contrib/include -I/usr/local/include
 LDFLAGS =
 
 all: gpx2garmin
