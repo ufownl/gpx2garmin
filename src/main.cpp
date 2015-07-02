@@ -1,13 +1,52 @@
 #include <rapidxml/rapidxml.hpp>
 #include <rapidxml/rapidxml_utils.hpp>
 #include <rapidxml/rapidxml_print.hpp>
+#include <stdlib.h>
+#include <math.h>
 #include <time.h>
+
+double get_lat(rapidxml::xml_node<>* trkpt)
+{
+	rapidxml::xml_attribute<>* attr = trkpt->first_attribute("lat");
+	if (!attr)
+	{
+		return 0.0f;
+	}
+
+	return atof(attr->value());
+}
+
+double get_lon(rapidxml::xml_node<>* trkpt)
+{
+	rapidxml::xml_attribute<>* attr = trkpt->first_attribute("lon");
+	if (!attr)
+	{
+		return 0.0f;
+	}
+
+	return atof(attr->value());
+}
+
+double deg2rad(double deg)
+{
+	return deg * M_PI / 180.0;
+}
+
+double calc_dist(rapidxml::xml_node<>* trkpt, rapidxml::xml_node<>* trkpt_prev)
+{
+	double lat = deg2rad(90.0 - get_lat(trkpt));
+	double lon = deg2rad(get_lon(trkpt));
+	double lat_prev = deg2rad(90.0 - get_lat(trkpt_prev));
+	double lon_prev = deg2rad(get_lon(trkpt_prev));
+	double c = sin(lat) * sin(lat_prev) * cos(lon - lon_prev) + cos(lat) * cos(lat_prev);
+	return 6378.137 * acos(c);
+}
 
 int main(int argc, char* argv[])
 {
-	if (argc != 3)
+	if (argc < 3 || argc > 4)
 	{
-		puts("Usage: gpx2garmin <input_file> <output_file>");
+		puts("Usage: gpx2garmin <input_file> <output_file> [speed]");
 		return -1;
 	}
 
@@ -23,6 +62,11 @@ int main(int argc, char* argv[])
 	}
 
 	time_t stamp = time(0);
+	double speed = 35.0 / 3600.0;
+	if (argc == 4)
+	{
+		speed = atof(argv[3]) / 3600.0;
+	}
 
 	rapidxml::xml_document<> out;
 	rapidxml::xml_node<>* decl_out = in.allocate_node(rapidxml::node_declaration);
@@ -49,8 +93,6 @@ int main(int argc, char* argv[])
 	metadata->append_node(in.allocate_node(rapidxml::node_element, "time", time_value));
 	gpx_out->append_node(metadata);
 
-	int stamp_inc = 0;
-
 	for (rapidxml::xml_node<>* trk_in = gpx_in->first_node("trk"); trk_in; trk_in = trk_in->next_sibling("trk"))
 	{
 		rapidxml::xml_node<>* trk_out = in.allocate_node(rapidxml::node_element, "trk");
@@ -58,10 +100,19 @@ int main(int argc, char* argv[])
 		for (rapidxml::xml_node<>* trkseg_in = trk_in->first_node("trkseg"); trkseg_in; trkseg_in = trkseg_in->next_sibling("trkseg"))
 		{
 			rapidxml::xml_node<>* trkseg_out = in.clone_node(trkseg_in);
+			rapidxml::xml_node<>* trkpt_prev = 0;
+			int stamp_inc = 0;
 			for (rapidxml::xml_node<>* trkpt_out = trkseg_out->first_node("trkpt"); trkpt_out; trkpt_out = trkpt_out->next_sibling("trkpt"))
 			{
+				if (trkpt_prev)
+				{
+					double dist = calc_dist(trkpt_out, trkpt_prev);
+					double tv = dist / speed;
+					stamp_inc += tv < 1.0 ? 1 : tv;
+				}
+
+				trkpt_prev = trkpt_out;
 				time_t stamp_out = stamp + stamp_inc;
-				stamp_inc += 25;
 				time_value = in.allocate_string(0, 21);
 				strftime(time_value, 21, "%Y-%m-%dT%H:%M:%SZ", gmtime(&stamp_out));
 				trkpt_out->append_node(in.allocate_node(rapidxml::node_element, "time", time_value));
